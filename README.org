@@ -1,0 +1,86 @@
+#+title: cl-webview
+#+author: 凉凉
+* About
+CL-WEBVIEW is a common lisp binding to [[https://github.com/webview/webview][webview/webview]], a tiny tiny
+cross-platform webview library to build modern cross-platform GUIs.
+
+* Example
+** Basic
+#+name: cl-webview-example
+#+begin_src lisp
+  (in-package :cl-webview)
+
+  (with-webview (webview :title "Basic 1" :debug? t)
+    (webview-set-html webview "<h1>CL-WEBVIEW | Example</h1>"))
+#+end_src
+
+This will open a webview window with =CL-WEBVIEW | Example= as =h1= header.
+
+** CLOG
+#+name: clog-webview-example
+#+begin_src lisp
+  ;; Just copy the CLOG tutorial 01-tutorial.lisp
+  ;; https://github.com/rabbibotton/clog/blob/main/tutorial/01-tutorial.lisp
+
+  (defpackage #:clog-webview-example
+    (:use :cl :clog :cl-webview)
+    (:export #:main))
+
+  (in-package :clog-webview-example)
+
+  (defun on-new-window (body)
+    "On-new-window handler. "
+    (setf (title (html-document body)) "CLOG and CL-WEBVIEW")
+    (let ((hello-element (create-child body "<h1> Hello World! (click me!) </h1>")))
+      (set-on-click hello-element
+                    (lambda (obj)
+                      (declare (ignore obj))
+                      (setf (color hello-element) :green)))))
+
+  (defun main ()
+    "Start tutorial. "
+    (initialize #'on-new-window)
+    (with-webview (webview :debug t)
+      (webview-navigate webview (format nil "http://127.0.0.1:~A" *clog-port*)))
+    (uiop:quit))
+
+  ;; And if you want, you can save the app like this:
+  ;; 
+  ;;   (sb-ext:save-lisp-and-die "clog-webview" :toplevel #'main :executable t)
+  ;;
+  ;; But here's a little tricky thing:
+  ;; since libwebview is just linked to system's spec directory, 
+  ;; so you cannot just copy the final executable file and send to
+  ;; normal user. see Installation section for more.
+#+end_src
+
+* Installation
+Clone, and load, that should be okay.
+
+The requirement for libwebview could be seen in [[https://github.com/webview/webview][webview/webview]].
+Behind the scene, in =preload.lisp=, I wrote a small script to
+execute the webview's =build.sh= and link the header file =webview.h=
+and the library =libwebview.dylib= under =spec= folder. The =spec= folder
+will be added to =cffi:*foreign-library-directories*= for library search.
+
+If you found your machine failed to compile or just don't need the
+compile process, you could commit the =eval-when= code ([[file:preload.lisp::14][preload.lisp]]),
+and compile yourself.
+
+Also, if you want to pack the application and deliver it to normal
+user. You may consider copy the dynamic lib with the executable,
+and push the lib path to =cffi:*foreign-library-directories*=. 
+
+* Others
+** macOS patch
+I was using SBCL on macOS, and as you may know, in macOS, a GUI app
+should have UI thread as the main thread, so the app should run
+in main thread by =run-in-main-thread=.
+
+However, an error is that if an app crash and you choose to terminate
+it, it would hang up the main loop and won't let next window to show.
+Another error is that i don't know how to add multiple window support,
+since the main loop was all taken by the first window. Helps are needed.
+
+** Current Issure
++ cannot open multiple window (=webview-run= hang up the main thread)
