@@ -10,6 +10,7 @@ cross-platform webview library to build modern cross-platform GUIs.
 #+begin_src lisp
   (in-package :cl-webview)
 
+  ;; in SLY/SLIME like multiple-thread situation
   (with-webview (webview :title "Basic 1" :debug? t)
     (webview-set-html webview "<h1>CL-WEBVIEW | Example</h1>"))
 #+end_src
@@ -40,13 +41,13 @@ This will open a webview window with =CL-WEBVIEW | Example= as =h1= header.
   (defun main ()
     "Start tutorial. "
     (initialize #'on-new-window)
-    (with-webview (webview :debug t)
+    (with-webview-main-only (webview :debug t)
       (webview-navigate webview (format nil "http://127.0.0.1:~A" *clog-port*)))
     (uiop:quit))
 
   ;; And if you want, you can save the app like this:
   ;; 
-  ;;   (sb-ext:save-lisp-and-die "clog-webview" :toplevel #'main :executable t)
+  ;;   (sb-ext:save-lisp-and-die "clog-webview" :toplevel #'main :executable t :compression t)
   ;;
   ;; But here's a little tricky thing:
   ;; since libwebview is just linked to system's spec directory, 
@@ -83,4 +84,4 @@ Another error is that i don't know how to add multiple window support,
 since the main loop was all taken by the first window. Helps are needed.
 
 ** Current Issure
-+ cannot open multiple window (=webview-run= hang up the main thread)
++ +cannot open multiple window (=webview-run= hang up the main thread)+

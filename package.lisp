@@ -3,12 +3,15 @@
 (uiop:define-package #:cl-webview.lib
   (:use)
   (:export
-   #:webview-terminate
-   #:webview-set-title
-   #:webview-navigate
-   #:webview-set-html
-   #:webview-init
-   #:webview-eval
+   #:webview-error-missing-dependency
+   #:webview-error-error-canceled
+   #:webview-error-invalid-state
+   #:webview-error-invalid-argument
+   #:webview-error-unspecified
+   #:webview-error-ok
+   #:webview-error-duplicate
+   #:webview-error-not-found
+
    #:webview-version))
 
 (defpackage #:cl-webview
@@ -20,16 +23,41 @@
    #:*default-webview-height*
    
    ;; High level wrapper
+   #:make-webview
    #:with-webview
-   
+   #:with-webview-main-only
+
    ;; Low-level wrapper
+   #:ensure-main-webview-window
+   #:quit-main-webview-window
+
    #:webview-create
    #:webview-set-size
    #:webview-bind-fn
    #:webview-bind
+   #:webview-dispatch-fn
+   #:webview-dispatch
+
+   #:webview-set-title
+   #:webview-navigate
+   #:webview-set-html
+   #:webview-init
+   #:webview-eval
+   #:webview-unbind
    
-   ;; direct from cl-webview.lib
    #:webview-terminate
+   #:webview-destory
+
+   ;; direct from cl-webview.lib
+   #:webview-error-missing-dependency
+   #:webview-error-error-canceled
+   #:webview-error-invalid-state
+   #:webview-error-invalid-argument
+   #:webview-error-unspecified
+   #:webview-error-ok
+   #:webview-error-duplicate
+   #:webview-error-not-found
+   
    #:webview-set-title
    #:webview-navigate
    #:webview-set-html

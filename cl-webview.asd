@@ -7,7 +7,7 @@
 a tiny tiny cross-platform webview library to build
 modern cross-platform GUIs. "
   :defsystem-depends-on (:cffi/c2ffi)
-  :depends-on (:cffi :shasht)
+  :depends-on (:cffi :shasht :trivial-channels)
   :serial t
   :components
   ((:file "package")
