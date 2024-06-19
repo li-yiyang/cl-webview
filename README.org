@@ -83,5 +83,29 @@ it, it would hang up the main loop and won't let next window to show.
 Another error is that i don't know how to add multiple window support,
 since the main loop was all taken by the first window. Helps are needed.
 
+** Packaging
+*** Packaging on macOS
+Here is a simple script that I use for packing on macOS:
+
+#+name: packaging-on-macos-shell
+#+begin_src shell
+  # inspired from:
+  # https://github.com/jimon/osx_app_in_plain_c/blob/master/appify
+
+  SOURCE=clog-webview-example.lisp
+  TARGET=HELLO
+  TOPLEVEL=clog-webview-example::main
+
+  DIR=${TARGET}.app/Contents
+
+  mkdir -p ${DIR}/{Resources/lib,MacOS}
+
+  sbcl --load $SOURCE \
+       --eval "(save-lisp-and-die \"${DIR}/MacOS/${TARGET}\" :toplevel '${TOPLEVEL} :executable t :compression t)"
+#+end_src
+
+it's bit simple, but it is just workable :p. I'll consider to add a
+better mechanics to build and release the application. 
+
 ** Current Issure
 + +cannot open multiple window (=webview-run= hang up the main thread)+
