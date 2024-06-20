@@ -23,6 +23,9 @@
    #:*default-webview-height*
    
    ;; High level wrapper
+   #:def-bind-callback
+   #:def-dispatch-callback
+   
    #:make-webview
    #:with-webview
    

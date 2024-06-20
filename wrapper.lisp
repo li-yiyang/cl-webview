@@ -132,7 +132,7 @@ Behind the scene:
 + the JSON was parsed (`shasht:read-json') into list
 + The CL result will be decoded to JSON (`shasht:write-json') to JS
 + also, when calling the binding function, will pass the calling
-  webview as the argument, see `webview-bind-fn' for details. 
+  webview as the argument, see `webview-bind-fn' for details.
 "
   `(cffi:defcallback ,name :void
        ((id :string) (req :string) (,webview :pointer))
@@ -156,6 +156,7 @@ Behind the scene:
 
 (defun webview-bind-fn (webview name fn)
   "Binds a function to a new global JavaScript function.
+Overwrite the old binding if exists.
 
 The `name' should be a string for toplevel JS function.
 The `fn' could be a function or a cffi callback symbol,
@@ -171,14 +172,18 @@ Example:
 
 2. `fn' be a cffi callback symbol:
 
-    (def-bind-callback boom param
-      (declare (ignore param))
-      (error \"BOOM!\")) ;; will be handled
-    (webview-bind-fn webview \"boom\" 'boom)
+    (def-bind-callback create-a-new-window-from (webview)
+      (with-webview (w :title \"Window from Window\")
+        (webview-set-html w (format nil \"This window from ~a\" webview))))
+
+    (with-webview (webview :title \"Window of Window\")
+      (webview-bind-fn  webview \"create_new_window\" 'create-a-new-window-from)
+      (webview-set-html webview \"<h1 onclick='create_new_window()'>CLICK</h1>\"))
 
    This should be used if you are using a cffi callback function
    commonly. Behind first situation is a callback named
    `%webview-bind-fn' so not recommanded to make the same name.
+
 "
   (declare (type (or function symbol) fn))
   (let ((fn* (cond ((functionp fn)
@@ -196,16 +201,32 @@ Example:
         (warn "Rebind already existing with the specified name of ~s. " name)))))
 
 (defmacro webview-bind ((webview &rest lambda-list) name &body body)
-  "Binds the function to webview, see `webview-bind-fn' for details. "
+  "Binds the function to webview, see `webview-bind-fn' for details.
+
+Example:
+
+    (with-webview (webview :title \"User Input\")
+      (webview-bind (webview message) \"format\"
+        (format t \"Got message ~a\" message))
+      (webview-set-html webview \"<h1>Input</h1>
+<input id='message'></input>
+<button onclick=\"format(document.getElementById('message').value)\">
+  FORMAT!
+</button>\"))
+
+"
   `(webview-bind-fn ,webview ,name (lambda (,webview ,@lambda-list)
                                      (declare (ignorable ,webview))
                                      ,@body)))
 
 ;; ========== webview-dispatch ==========
 
-(defmacro def-dispatch-callback (name webview &body body)
+(defmacro def-dispatch-callback (name (webview) &body body)
   "A wrapper for cffi:callback funcion useful in `webview-dispatch-fn'.
-The `webview' is the webview instance calling the dispatch fn. "
+The `webview' is the webview instance calling the dispatch fn.
+
+The form of `def-dispatch-callback' is much like `def-bind-callback'.
+"
   `(cffi:defcallback ,name :void
        ((,webview cl-webview.lib::webview-t) (arg :pointer))
      (declare (ignore arg))
@@ -223,14 +244,14 @@ The `webview' is the webview instance calling the dispatch fn. "
 The function `fn' is called with an argument for `webview' instance."
   (declare (type (or function symbol)))
   (let* ((fn* (cond ((functionp fn)
-                     (def-dispatch-callback %webview-dispatch-fn webview
+                     (def-dispatch-callback %webview-dispatch-fn (webview)
                        (funcall fn webview))
                      (cffi:callback %webview-dispatch-fn))
                     ((symbolp fn)
                      (cffi:get-callback fn)))))
     (signal (cl-webview.lib::webview-dispatch webview fn* (cffi:null-pointer)))))
 
-(defmacro webview-dispatch (webview &body body)
+(defmacro webview-dispatch ((webview) &body body)
   "Schedules a function to be invoked on the thread with the run/event loop.
 Use this function to interact with the library or native handles. "
   (declare (symbol webview))
@@ -374,7 +395,7 @@ If set with `url', will visit url regardless of the `html'. "
                ;; just create the webview window
                ;; by dispatching the main webview
                ;; see https://github.com/webview/webview/pull/1005
-               (webview-dispatch *main-webview-window*
+               (webview-dispatch (*main-webview-window*)
                  (%make-webview))
                ;; create the webview as the main webview
                ;; just in case you happened to run `make-webview'
@@ -383,13 +404,12 @@ If set with `url', will visit url regardless of the `html'. "
           (t
            (ensure-main-webview-window)
            (let ((channel (trivial-channels:make-channel)))
-             (webview-dispatch *main-webview-window*
+             (webview-dispatch (*main-webview-window*)
                (trivial-channels:sendmsg channel (%make-webview)))
              (trivial-channels:recvmsg channel))))))
 
 ;; it seems not to be a appealing macro though...
 (defmacro with-webview ((webview
-                         &rest args
                          &key (title *default-window-title*)
                            (width  *default-window-width*)
                            (height *default-window-height*)
@@ -421,7 +441,7 @@ Example:
                 ;; just create the webview window
                 ;; by dispatching the main webview
                 ;; see https://github.com/webview/webview/pull/1005
-                (webview-dispatch *main-webview-window*
+                (webview-dispatch (*main-webview-window*)
                   (%make-webview))
                 ;; create the webview as the main webview
                 ;; just in case you happened to run `make-webview'
@@ -430,6 +450,6 @@ Example:
            (t
             (ensure-main-webview-window)
             (let ((channel (trivial-channels:make-channel)))
-              (webview-dispatch *main-webview-window*
+              (webview-dispatch (*main-webview-window*)
                 (trivial-channels:sendmsg channel (%make-webview)))
               (trivial-channels:recvmsg channel))))))

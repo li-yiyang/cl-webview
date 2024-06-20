@@ -109,3 +109,4 @@ better mechanics to build and release the application.
 
 ** Current Issure
 + +cannot open multiple window (=webview-run= hang up the main thread)+
++ cannot close the window by =webview-terminate= and =webview-destroy=. 
