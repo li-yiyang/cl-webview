@@ -41,7 +41,7 @@ This will open a webview window with =CL-WEBVIEW | Example= as =h1= header.
   (defun main ()
     "Start tutorial. "
     (initialize #'on-new-window)
-    (with-webview-main-only (webview :debug t)
+    (with-webview (webview :debug t)
       (webview-navigate webview (format nil "http://127.0.0.1:~A" *clog-port*)))
     (uiop:quit))
 

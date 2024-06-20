@@ -25,8 +25,7 @@
    ;; High level wrapper
    #:make-webview
    #:with-webview
-   #:with-webview-main-only
-
+   
    ;; Low-level wrapper
    #:ensure-main-webview-window
    #:quit-main-webview-window
@@ -46,7 +45,7 @@
    #:webview-unbind
    
    #:webview-terminate
-   #:webview-destory
+   #:webview-destroy
 
    ;; direct from cl-webview.lib
    #:webview-error-missing-dependency

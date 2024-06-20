@@ -12,6 +12,13 @@
 (defparameter *main-webview-window* nil
   "The main webview window. ")
 
+(defparameter *main-webview-window-lock* (bt:make-lock)
+  "The process lock of the main webview.
+This is the lock on `*main-webview-window-live?*'. ")
+
+(defparameter *main-webview-window-live?* nil
+  "The status of main webview window. ")
+
 ;; ========== Webview Error Condition ==========
 
 (define-condition webview-error (condition) ())
@@ -99,10 +106,11 @@ See `*default-webview-width*' and `*default-webview-height*' for detail.
   (signal (cl-webview.lib::webview-terminate webview)))
 
 ;; ========== webview-destroy ==========
+;; Not knowing if it is proper to expose this function. 
 
-(defun webview-destory (webview)
+(defun webview-destroy (webview)
   "Destroy the webview application. "
-  (signal (cl-webview.lib::webview-destory webview)))
+  (signal (cl-webview.lib::webview-destroy webview)))
 
 ;; ========== webview-bind ==========
 
@@ -127,9 +135,8 @@ Behind the scene:
   webview as the argument, see `webview-bind-fn' for details. 
 "
   `(cffi:defcallback ,name :void
-       ((id :string) (req :string) (arg :pointer))
-     (let ((status 1)
-           (,webview (cffi:mem-ref arg 'cl-webview.lib::webview-t))
+       ((id :string) (req :string) (,webview :pointer))
+     (let ((status 1)           
            result)
        (restart-case
            (multiple-value-call
@@ -143,7 +150,7 @@ Behind the scene:
          (terminate ()
            :report "Terminate this Webview application. "
            (warn "Terminated webview window. ")
-           ))
+           (webview-terminate ,webview)))
        (cl-webview.lib::webview-return
         ,webview id status (shasht:write-json result nil)))))
 
@@ -177,20 +184,22 @@ Example:
   (let ((fn* (cond ((functionp fn)
                     (def-bind-callback %webview-bind-fn (webview &rest params)
                       (apply fn webview params))
-                    (cffi:callback %webview-bind-fn))
-                   ((symbolp   fn)
-                    (cffi:get-callback fn)))))
+                    '%webview-bind-fn)
+                   ((symbolp   fn) fn))))
     (handler-case
-        (cffi:with-foreign-pointer (webview* 1)
-          (setf (cffi:mem-ref webview* 'cl-webview.lib::webview-t) webview)
-          (signal (cl-webview.lib::webview-bind webview name fn* webview*)))
+        (signal (cl-webview.lib::webview-bind
+                    webview name (cffi:get-callback fn*) webview))
       (webview-error-duplicate (c)
         (declare (ignore c))
-        (warn "A binding already exists with the specified name of ~s. " name)))))
+        (webview-unbind  webview name)
+        (webview-bind-fn webview name fn*)
+        (warn "Rebind already existing with the specified name of ~s. " name)))))
 
 (defmacro webview-bind ((webview &rest lambda-list) name &body body)
   "Binds the function to webview, see `webview-bind-fn' for details. "
-  `(webview-bind-fn ,webview ,name (lambda (,webview ,@lambda-list) ,@body)))
+  `(webview-bind-fn ,webview ,name (lambda (,webview ,@lambda-list)
+                                     (declare (ignorable ,webview))
+                                     ,@body)))
 
 ;; ========== webview-dispatch ==========
 
@@ -301,23 +310,45 @@ Use bindings if you need to communicate the result of the evalutation. "
                ,@body)))
   #-sbcl `(progn ,@body))
 
+;; Need to support more platform
+(defun in-main-thread? ()
+  "Test if now in main thread. "
+  #+sbcl (sb-thread:main-thread-p)
+  #-sbcl (error "Not know if in main thread. "))
+
+;; this should be run in main thread
+(defun webview-run (main-webview)
+  "Run the webview as the main webview window.
+This should only be used for main webview window.
+The `main-webview' will be destroyed when the main loop ends. "
+  (without-float-traps
+    (bt:with-lock-held (*main-webview-window-lock*)
+      (unwind-protect
+           (progn
+             (setf *main-webview-window-live?* t)
+             (cl-webview.lib::webview-run      main-webview) ; webview_run(w);
+             (cl-webview.lib::webview-destroy  main-webview)) ; webview_destroy(w);
+        (setf *main-webview-window-live?* nil)))))
+
 (defun ensure-main-webview-window (&rest args &key debug native-window)
   "Make sure there is a main webview window running, create if not. "
   (declare (ignore debug native-window))
-  (unless *main-webview-window*
+  (unless *main-webview-window-live?*
     (let ((channel (trivial-channels:make-channel)))
       (run-in-main-thread
         (let ((main (apply #'webview-create args)))
-          (trivial-channels:sendmsg channel main)
-          (cl-webview.lib::webview-run      main)   ; webview_run(w);
-          (cl-webview.lib::webview-destroy  main))) ; webview_destroy(w);
-      (setf *main-webview-window* (trivial-channels:recvmsg channel)))))
+          (setf *main-webview-window* main)
+          (trivial-channels:sendmsg channel t)
+          (webview-run main)))
+      (trivial-channels:recvmsg channel))))
 
 (defun quit-main-webview-window ()
   "Make sure the main webview window is terminated. "
-  (when *main-webview-window*
-    (unwind-protect (webview-terminate *main-webview-window*)
-      (setf *main-webview-window* nil))))
+  (when *main-webview-window-live?*
+    (cl-webview.lib::webview-terminate *main-webview-window*)
+    ;; wait until the lock is released
+    (bt:with-lock-held (*main-webview-window-lock*)
+      (format t "main webview quited"))))
 
 (defun make-webview (&key debug native-window
                        (width  *default-window-width*)
@@ -329,27 +360,42 @@ Use bindings if you need to communicate the result of the evalutation. "
                      &allow-other-keys)
   "Make a webview by dispatching the main webview window.
 If set with `url', will visit url regardless of the `html'. "
-  (ensure-main-webview-window)
-  (let ((channel (trivial-channels:make-channel)))
-    (webview-dispatch *main-webview-window*
-      (without-float-traps
-        (let ((webview (webview-create :debug         debug
-                                       :native-window native-window)))
-          (webview-set-size  webview width height hints)
-          (webview-set-title webview title)
-          (if url-set?
-              (webview-navigate  webview url)
-              (webview-set-html  webview html))
-          (trivial-channels:sendmsg channel webview))))
-    (trivial-channels:recvmsg channel)))
+  (flet ((%make-webview ()
+           (let ((webview (webview-create :debug         debug
+                                          :native-window native-window)))
+             (webview-set-size  webview width height hints)
+             (webview-set-title webview title)
+             (if url-set?
+                 (webview-navigate  webview url)
+                 (webview-set-html  webview html))
+             webview)))
+    (cond ((in-main-thread?)
+           (if *main-webview-window-live?*
+               ;; just create the webview window
+               ;; by dispatching the main webview
+               ;; see https://github.com/webview/webview/pull/1005
+               (webview-dispatch *main-webview-window*
+                 (%make-webview))
+               ;; create the webview as the main webview
+               ;; just in case you happened to run `make-webview'
+               ;; in main thread
+               (webview-run (%make-webview))))
+          (t
+           (ensure-main-webview-window)
+           (let ((channel (trivial-channels:make-channel)))
+             (webview-dispatch *main-webview-window*
+               (trivial-channels:sendmsg channel (%make-webview)))
+             (trivial-channels:recvmsg channel))))))
 
+;; it seems not to be a appealing macro though...
 (defmacro with-webview ((webview
                          &rest args
                          &key (title *default-window-title*)
                            (width  *default-window-width*)
                            (height *default-window-height*)
-                           (debug nil)
-                           (hints :none)                           
+                           (hints :none)
+                           (html "") (url "" url-set?)
+                           debug native-window                           
                          &allow-other-keys)
                         &body body)
   "Create a webview instance and ensure it to be destroied after use.
@@ -359,28 +405,31 @@ Example:
     (with-webview (webview :title \"Hello\")
       (webview-set-html webview \"<h1>CL-WEBVIEW</h1>\"))
 "
-  (declare (ignore title width height debug hints))
-  `(let ((,webview (make-webview ,@args)))
-     ,@body))
-
-(defmacro with-webview-main-only ((webview
-                                   &rest args
-                                   &key (title *default-window-title*)
-                                     (width  *default-window-width*)
-                                     (height *default-window-height*)
-                                     (debug nil)
-                                     (hints :none)
-                                   &allow-other-keys)
-                                  &body body)
-  "See `with-webview'.
-
-Note: `with-webview-main-only' should be used in `save-lisp-and-die' like
-situation. Do not use `with-webview' because the init `*main-webview-window*'
-will hang up the main thread. "
-  `(run-in-main-thread
-     (let ((,webview (webview-create ,@args)))
-       (webview-set-size  ,webview ,width ,height ,hints)
-       (webview-set-title ,webview ,title)
-       ,@body
-       (cl-webview.lib::webview-run      ,webview)
-       (cl-webview.lib::webview-destroy  ,webview))))
+  `(flet ((%make-webview ()
+            (without-float-traps
+              (let ((,webview (webview-create :debug         ,debug
+                                              :native-window ,native-window)))
+                (webview-set-size  ,webview ,width ,height ,hints)
+                (webview-set-title ,webview ,title)
+                ,(if url-set?
+                     `(webview-navigate  ,webview ,url)
+                     `(webview-set-html  ,webview ,html))
+                ,@body
+                ,webview))))
+     (cond ((in-main-thread?)
+            (if *main-webview-window-live?*
+                ;; just create the webview window
+                ;; by dispatching the main webview
+                ;; see https://github.com/webview/webview/pull/1005
+                (webview-dispatch *main-webview-window*
+                  (%make-webview))
+                ;; create the webview as the main webview
+                ;; just in case you happened to run `make-webview'
+                ;; in main thread
+                (webview-run (%make-webview))))
+           (t
+            (ensure-main-webview-window)
+            (let ((channel (trivial-channels:make-channel)))
+              (webview-dispatch *main-webview-window*
+                (trivial-channels:sendmsg channel (%make-webview)))
+              (trivial-channels:recvmsg channel))))))
