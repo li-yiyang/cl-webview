@@ -18,6 +18,9 @@
              'cl-webview (format nil "~{~a~^/~}" parts)))))
     ;; lib should be the place where cffi search for libwebview
     (pushnew (path "lib/") cffi:*foreign-library-directories*)
+    (unless (uiop:directory-exists-p (path "lib/"))
+      (format t "~&Make lib directory. ")
+      (ensure-directories-exist (path "lib/")))    
     (let ((lib (cond ((uiop:os-macosx-p) "libwebview.dylib")
                      ((uiop:os-unix-p)   "libwebview.so")
                      (t (warn "Unhandled platform... ") "libwebview"))))
@@ -35,7 +38,9 @@
       (unless (uiop:file-exists-p (path "lib" lib))
         (unless (uiop:file-exists-p (path "webview" "build" "library" lib))
           (format t "~&Building ~a in webview~%" lib)
-          (uiop:run-program `("sh" ,(path "webview" "script" "build.sh"))
+          (uiop:run-program `("sh" ,(path "webview" "script"
+                                          #+unix "build.sh"
+                                          #-unix "build.bat"))
                             :output t))
         (format t "~&Linking ~a from webview~%" lib)
         (uiop:run-program `("ln" "-s" ,(path "webview" "build" "library" lib)

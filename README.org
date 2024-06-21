@@ -61,8 +61,10 @@ Clone, and load, that should be okay.
 The requirement for libwebview could be seen in [[https://github.com/webview/webview][webview/webview]].
 Behind the scene, in =preload.lisp=, I wrote a small script to
 execute the webview's =build.sh= and link the header file =webview.h=
-and the library =libwebview.dylib= under =spec= folder. The =spec= folder
-will be added to =cffi:*foreign-library-directories*= for library search.
+under =spec= folder and the library =libwebview.dylib= under =lib= folder.
+
+The =spec= folder will be added to =cffi:*foreign-library-directories*=
+for library search. And the =lib= folder will be automatically created.
 
 If you found your machine failed to compile or just don't need the
 compile process, you could commit the =eval-when= code ([[file:preload.lisp::14][preload.lisp]]),
