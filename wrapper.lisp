@@ -66,39 +66,6 @@ Example:
        "Creation fail (Runtime dependencies missing / window creation fails). "))    
     webview))
 
-;; ========== webview-set-size ==========
-
-(defun webview-set-size (webview width height
-                         &optional (hints :none))
-  "Set webview `webview' window size with `width' and `height'.
-
-The webview hints could be:
-+ `:none'  width and height are default size (default)
-+ `:min'   width and height are minimum bounds
-+ `:max'   width and height are maximum bounds
-+ `:fixed' width and height cannot changed by user
-
-Example:
-
-    (webview-set-size webview
-                      *default-webview-width*
-                      *default-webview-height*)
-
-See `*default-webview-width*' and `*default-webview-height*' for detail.
-"
-  (let ((hints (case hints
-                 ((:none :webview-hint-none)
-                  cl-webview.lib::webview-hint-none)
-                 ((:min  :webview-hint-min)
-                  cl-webview.lib::webview-hint-min)
-                 ((:max  :webview-hint-max)
-                  cl-webview.lib::webview-hint-max)
-                 ((:fixed :webview-hint-fixed)
-                  cl-webview.lib::webview-hint-fixed)
-                 (otherwise
-                  cl-webview.lib::webview-hint-none))))
-    (signal (cl-webview.lib::webview-set-size webview width height hints))))
-
 ;; ========== webview-terminate ==========
 
 (defun webview-terminate (webview)
@@ -143,16 +110,16 @@ Behind the scene:
                (lambda ,params
                  (setf result (progn ,@body)
                        status 0))
-             (values-list (map 'list #'identity (shasht:read-json req))))
+             (values-list (map 'list #'identity (shasht:read-json req)))
+             (cl-webview.lib::webview-return
+              ,webview id status (shasht:write-json result nil)))
          (continue ()
            :report "Ignore error and return to main loop. "
            (setf status 1))
          (terminate ()
            :report "Terminate this Webview application. "
            (warn "Terminated webview window. ")
-           (webview-terminate ,webview)))
-       (cl-webview.lib::webview-return
-        ,webview id status (shasht:write-json result nil)))))
+           (webview-terminate ,webview))))))
 
 (defun webview-bind-fn (webview name fn)
   "Binds a function to a new global JavaScript function.
@@ -236,7 +203,7 @@ The form of `def-dispatch-callback' is much like `def-bind-callback'.
        (terminate ()
          :report "Terminate this Webview application. "
          (warn "Terminated webview window. ")
-         (webview-terminate webview)))))
+         (webview-terminate ,webview)))))
 
 (defun webview-dispatch-fn (webview fn)
   "Dispatch webview instance `webview' with function `fn'.
@@ -260,11 +227,46 @@ Use this function to interact with the library or native handles. "
                           (declare (ignorable ,webview))
                           ,@body)))
 
+;; ========== webview-set-size ==========
+
+(defun webview-set-size (webview width height
+                         &optional (hints :none))
+  "Set webview `webview' window size with `width' and `height'.
+
+The webview hints could be:
++ `:none'  width and height are default size (default)
++ `:min'   width and height are minimum bounds
++ `:max'   width and height are maximum bounds
++ `:fixed' width and height cannot changed by user
+
+Example:
+
+    (webview-set-size webview
+                      *default-webview-width*
+                      *default-webview-height*)
+
+See `*default-webview-width*' and `*default-webview-height*' for detail.
+"
+  (let ((hints (case hints
+                 ((:none :webview-hint-none)
+                  cl-webview.lib::webview-hint-none)
+                 ((:min  :webview-hint-min)
+                  cl-webview.lib::webview-hint-min)
+                 ((:max  :webview-hint-max)
+                  cl-webview.lib::webview-hint-max)
+                 ((:fixed :webview-hint-fixed)
+                  cl-webview.lib::webview-hint-fixed)
+                 (otherwise
+                  cl-webview.lib::webview-hint-none))))
+    (webview-dispatch (webview)
+      (cl-webview.lib::webview-set-size webview width height hints))))
+
 ;; ========== webview-set-title ==========
 
 (defun webview-set-title (webview title)
   "Updates the title of the native window. "
-  (signal (cl-webview.lib::webview-set-title webview title)))
+  (webview-dispatch (webview)
+    (cl-webview.lib::webview-set-title webview title)))
 
 ;; ========== webview-navigate ==========
 
@@ -277,21 +279,24 @@ Use this function to interact with the library or native handles. "
   "Navigates webview to the given `url'.
 `url' may be a properly encoded data URI. "
   (let ((url (%decode-url url)))
-    (signal (cl-webview.lib::webview-navigate webview url))))
+    (webview-dispatch (webview)
+      (cl-webview.lib::webview-navigate webview url))))
 
 ;; ========== webview-set-html ==========
 
 ;; TODO: add html generation support
 (defun webview-set-html (webview html)
   "Load HTML content into the webview. "
-  (signal (cl-webview.lib::webview-set-html webview html)))
+  (webview-dispatch (webview)
+    (cl-webview.lib::webview-set-html webview html)))
 
 ;; ========== webview-init ==========
 
 (defun webview-init (webview js)
   "Injects JS code to be executed immediately upon loading a page.
 The code will be executed before window.onload. "
-  (signal (cl-webview.lib::webview-init webview js)))
+  (webview-dispatch (webview)
+    (cl-webview.lib::webview-init webview js)))
 
 ;; ========== webview-eval ==========
 
@@ -299,16 +304,18 @@ The code will be executed before window.onload. "
   "Evaluates arbitrary JS code.
 
 Use bindings if you need to communicate the result of the evalutation. "
-  (signal (cl-webview.lib::webview-eval webview js)))
+  (webview-dispatch (webview)
+    (cl-webview.lib::webview-eval webview js)))
 
 ;; ========== webview-unbind ==========
 
 (defun webview-unbind (webview name)
   "Removes a binding created with `webview-bind'. "
-  (handler-case (signal (cl-webview.lib::webview-unbind webview name))
-    (webview-error-not-found (c)
-      (declare (ignore c))
-      (warn (format nil "No binding exists with the name of ~s" name)))))
+  (webview-dispatch (webview)
+    (handler-case (signal (cl-webview.lib::webview-unbind webview name))
+      (webview-error-not-found (c)
+        (declare (ignore c))
+        (warn (format nil "No binding exists with the name of ~s" name))))))
 
 (defmacro without-float-traps (&body body)
   "Get rid of the float traps error (in SBCL). "

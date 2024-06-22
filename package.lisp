@@ -18,9 +18,9 @@
   (:use :cl :cl-webview.lib)
   (:export
    ;; Globally Parameters
-   #:*default-webview-title*
-   #:*default-webview-width*
-   #:*default-webview-height*
+   #:*default-window-title*
+   #:*default-window-width*
+   #:*default-window-height*
    
    ;; High level wrapper
    #:def-bind-callback
