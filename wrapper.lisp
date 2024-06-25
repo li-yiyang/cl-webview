@@ -106,11 +106,13 @@ Behind the scene:
      (let ((status 1)           
            result)
        (restart-case
-           (multiple-value-call
-               (lambda ,params
-                 (setf result (progn ,@body)
-                       status 0))
-             (values-list (map 'list #'identity (shasht:read-json req)))
+           (progn
+             ;; call lisp code from js
+             (apply (lambda ,params
+                      (setf result (progn ,@body)
+                            status 0))
+                    (map 'list #'identity (shasht:read-json req)))
+             ;; return status and result
              (cl-webview.lib::webview-return
               ,webview id status (shasht:write-json result nil)))
          (continue ()
@@ -155,16 +157,16 @@ Example:
   (declare (type (or function symbol) fn))
   (let ((fn* (cond ((functionp fn)
                     (def-bind-callback %webview-bind-fn (webview &rest params)
-                      (apply fn webview params))
-                    '%webview-bind-fn)
-                   ((symbolp   fn) fn))))
+                      (apply fn (cons webview params)))
+                    (cffi:callback %webview-bind-fn))
+                   ((symbolp   fn)
+                    (cffi:get-callback fn)))))
     (handler-case
-        (signal (cl-webview.lib::webview-bind
-                    webview name (cffi:get-callback fn*) webview))
+        (signal (cl-webview.lib::webview-bind webview name fn* webview))
       (webview-error-duplicate (c)
         (declare (ignore c))
-        (webview-unbind  webview name)
-        (webview-bind-fn webview name fn*)
+        (cl-webview.lib::webview-unbind webview name)
+        (cl-webview.lib::webview-bind   webview name fn* webview)
         (warn "Rebind already existing with the specified name of ~s. " name)))))
 
 (defmacro webview-bind ((webview &rest lambda-list) name &body body)
