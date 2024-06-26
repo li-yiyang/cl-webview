@@ -179,7 +179,7 @@ Example:
         (format t \"Got message ~a\" message))
       (webview-set-html webview \"<h1>Input</h1>
 <input id='message'></input>
-<button onclick=\"format(document.getElementById('message').value)\">
+<button onclick=\\\"format(document.getElementById('message').value)\\\">
   FORMAT!
 </button>\"))
 
@@ -260,45 +260,33 @@ See `*default-webview-width*' and `*default-webview-height*' for detail.
                   cl-webview.lib::webview-hint-fixed)
                  (otherwise
                   cl-webview.lib::webview-hint-none))))
-    (webview-dispatch (webview)
-      (cl-webview.lib::webview-set-size webview width height hints))))
+    (signal (cl-webview.lib::webview-set-size webview width height hints))))
 
 ;; ========== webview-set-title ==========
 
 (defun webview-set-title (webview title)
   "Updates the title of the native window. "
-  (webview-dispatch (webview)
-    (cl-webview.lib::webview-set-title webview title)))
+  (signal (cl-webview.lib::webview-set-title webview title)))
 
 ;; ========== webview-navigate ==========
-
-;; TODO: add custom URL support.
-(defun %decode-url (url)
-  "Decode custom `url'. "
-  url)
 
 (defun webview-navigate (webview url)
   "Navigates webview to the given `url'.
 `url' may be a properly encoded data URI. "
-  (let ((url (%decode-url url)))
-    (webview-dispatch (webview)
-      (cl-webview.lib::webview-navigate webview url))))
+  (signal (cl-webview.lib::webview-navigate webview url)))
 
 ;; ========== webview-set-html ==========
 
-;; TODO: add html generation support
 (defun webview-set-html (webview html)
   "Load HTML content into the webview. "
-  (webview-dispatch (webview)
-    (cl-webview.lib::webview-set-html webview html)))
+  (signal (cl-webview.lib::webview-set-html webview html)))
 
 ;; ========== webview-init ==========
 
 (defun webview-init (webview js)
   "Injects JS code to be executed immediately upon loading a page.
 The code will be executed before window.onload. "
-  (webview-dispatch (webview)
-    (cl-webview.lib::webview-init webview js)))
+  (signal (cl-webview.lib::webview-init webview js)))
 
 ;; ========== webview-eval ==========
 
@@ -306,18 +294,16 @@ The code will be executed before window.onload. "
   "Evaluates arbitrary JS code.
 
 Use bindings if you need to communicate the result of the evalutation. "
-  (webview-dispatch (webview)
-    (cl-webview.lib::webview-eval webview js)))
+  (signal (cl-webview.lib::webview-eval webview js)))
 
 ;; ========== webview-unbind ==========
 
 (defun webview-unbind (webview name)
   "Removes a binding created with `webview-bind'. "
-  (webview-dispatch (webview)
-    (handler-case (signal (cl-webview.lib::webview-unbind webview name))
-      (webview-error-not-found (c)
-        (declare (ignore c))
-        (warn (format nil "No binding exists with the name of ~s" name))))))
+  (handler-case (signal (cl-webview.lib::webview-unbind webview name))
+    (webview-error-not-found (c)
+      (declare (ignore c))
+      (warn (format nil "No binding exists with the name of ~s" name)))))
 
 (defmacro without-float-traps (&body body)
   "Get rid of the float traps error (in SBCL). "
